@@ -6,6 +6,7 @@ const handleSearchEmails = require('./search');
 const handleReadEmail = require('./read');
 const handleSendEmail = require('./send');
 const handleCreateDraft = require('./draft');
+const handleCreateReplyDraft = require('./reply');
 const handleMarkAsRead = require('./mark-as-read');
 
 // Email tool definitions
@@ -181,6 +182,37 @@ const emailTools = [
       required: ["subject", "body"]
     },
     handler: handleCreateDraft
+  },
+  {
+    name: "create-reply-draft",
+    description: "Creates a reply draft within an existing email thread. The draft preserves the conversation chain and quotes the original message.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        messageId: {
+          type: "string",
+          description: "ID of the email to reply to (from read-email or search-emails)"
+        },
+        body: {
+          type: "string",
+          description: "Reply body content (can be plain text or HTML)"
+        },
+        replyAll: {
+          type: "boolean",
+          description: "Whether to reply to all recipients (default: false)"
+        },
+        cc: {
+          type: "string",
+          description: "Additional CC recipients (comma-separated email addresses)"
+        },
+        bcc: {
+          type: "string",
+          description: "BCC recipients (comma-separated email addresses)"
+        }
+      },
+      required: ["messageId", "body"]
+    },
+    handler: handleCreateReplyDraft
   }
 ];
 
@@ -191,5 +223,6 @@ module.exports = {
   handleReadEmail,
   handleSendEmail,
   handleCreateDraft,
+  handleCreateReplyDraft,
   handleMarkAsRead
 };
