@@ -26,6 +26,7 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
     
     // Check if path already contains the full URL (from nextLink)
     let finalUrl;
+    let queryString = '';
     if (path.startsWith('http://') || path.startsWith('https://')) {
       // Path is already a full URL (from pagination nextLink)
       finalUrl = path;
@@ -36,25 +37,35 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
       const encodedPath = path.split('/')
         .map(segment => encodeURIComponent(segment))
         .join('/');
-      
-      // Build query string from parameters with special handling for OData filters
-      let queryString = '';
+
+      // Build query string from parameters with special handling for OData
       if (Object.keys(queryParams).length > 0) {
-        // Handle $filter parameter specially to ensure proper URI encoding
+        // Extract special OData params that need custom encoding
         const filter = queryParams.$filter;
-        if (filter) {
-          delete queryParams.$filter; // Remove from regular params
-        }
-        
+        const search = queryParams.$search;
+        if (filter) delete queryParams.$filter;
+        if (search) delete queryParams.$search;
+
         // Build query string with proper encoding for regular params
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(queryParams)) {
           params.append(key, value);
         }
-        
+
         queryString = params.toString();
-        
-        // Add filter parameter separately with proper encoding
+
+        // Add $search parameter with proper encoding (quotes must be preserved)
+        if (search) {
+          const searchEncoded = encodeURIComponent(search);
+          if (queryString) {
+            queryString += `&$search=${searchEncoded}`;
+          } else {
+            queryString = `$search=${searchEncoded}`;
+          }
+          console.error(`$search param: ${search} -> encoded: ${searchEncoded}`);
+        }
+
+        // Add $filter parameter with proper encoding
         if (filter) {
           if (queryString) {
             queryString += `&$filter=${encodeURIComponent(filter)}`;
@@ -62,11 +73,11 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
             queryString = `$filter=${encodeURIComponent(filter)}`;
           }
         }
-        
+
         if (queryString) {
           queryString = '?' + queryString;
         }
-        
+
         console.error(`Query string: ${queryString}`);
       }
       
@@ -74,13 +85,24 @@ async function callGraphAPI(accessToken, method, path, data = null, queryParams 
       console.error(`Full URL: ${finalUrl}`);
     }
     
+    // Check if request includes $search (needs ConsistencyLevel header)
+    const hasSearch = queryString && queryString.includes('$search=');
+
     return new Promise((resolve, reject) => {
+      const headers = {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      };
+
+      // Add ConsistencyLevel header for $search queries (required by Graph API)
+      if (hasSearch) {
+        headers['ConsistencyLevel'] = 'eventual';
+        console.error('Added ConsistencyLevel: eventual header for $search');
+      }
+
       const options = {
         method: method,
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
+        headers: headers
       };
       
       const req = https.request(finalUrl, options, (res) => {

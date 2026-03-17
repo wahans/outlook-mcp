@@ -12,7 +12,7 @@ class TokenStorage {
       redirectUri: process.env.MS_REDIRECT_URI || 'http://localhost:3333/auth/callback',
       scopes: (process.env.MS_SCOPES || 'offline_access User.Read Mail.Read').split(' '),
       tokenEndpoint: process.env.MS_TOKEN_ENDPOINT || 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-      refreshTokenBuffer: 5 * 60 * 1000, // 5 minutes buffer for token refresh
+      refreshTokenBuffer: 10 * 60 * 1000, // 10 minutes buffer for proactive token refresh
       ...config // Allow overriding default config
     };
     this.tokens = null;
@@ -88,6 +88,12 @@ class TokenStorage {
       return null;
     }
 
+    // Log token status for debugging
+    const now = Date.now();
+    const expiresAt = this.tokens.expires_at || 0;
+    const timeLeft = Math.round((expiresAt - now) / 1000 / 60); // minutes
+    console.log(`Token status: ${timeLeft} minutes until expiry (buffer: ${this.config.refreshTokenBuffer / 60000} min)`);
+
     if (this.isTokenExpired()) {
       console.log('Access token expired or nearing expiration. Attempting refresh.');
       if (this.tokens.refresh_token) {
@@ -95,8 +101,18 @@ class TokenStorage {
           return await this.refreshAccessToken();
         } catch (refreshError) {
           console.error('Failed to refresh access token:', refreshError);
-          this.tokens = null; // Invalidate tokens on refresh failure
-          await this._saveTokensToFile(); // Persist invalidation
+          // Only clear tokens if refresh token is actually invalid (not for transient errors)
+          const errorMsg = refreshError.message || '';
+          if (errorMsg.includes('invalid_grant') || errorMsg.includes('AADSTS')) {
+            console.error('Refresh token is invalid. Clearing tokens.');
+            this.tokens = null;
+            await this._saveTokensToFile();
+          } else {
+            console.warn('Transient refresh error. Keeping refresh token for retry.');
+            // Clear only access_token so next call will retry refresh
+            this.tokens.access_token = null;
+            this.tokens.expires_at = 0;
+          }
           return null;
         }
       } else {

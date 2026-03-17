@@ -60,15 +60,53 @@ async function resolveFolderPath(accessToken, folderName) {
 }
 
 /**
- * Get the ID of a mail folder by its name
+ * Get the ID of a mail folder by its name (searches subfolders too)
  * @param {string} accessToken - Access token
- * @param {string} folderName - Name of the folder to find
+ * @param {string} folderName - Name of the folder to find (can be "subfolder" or "Parent/subfolder")
  * @returns {Promise<string|null>} - Folder ID or null if not found
  */
 async function getFolderIdByName(accessToken, folderName) {
   try {
-    // First try with exact match filter
     console.error(`Looking for folder with name "${folderName}"`);
+
+    // Handle path notation like "Inbox/subfolder"
+    if (folderName.includes('/')) {
+      const parts = folderName.split('/');
+      let currentFolderId = null;
+
+      for (const part of parts) {
+        const searchEndpoint = currentFolderId
+          ? `me/mailFolders/${currentFolderId}/childFolders`
+          : 'me/mailFolders';
+
+        const response = await callGraphAPI(
+          accessToken,
+          'GET',
+          searchEndpoint,
+          null,
+          { $filter: `displayName eq '${part}'` }
+        );
+
+        if (response.value && response.value.length > 0) {
+          currentFolderId = response.value[0].id;
+        } else {
+          // Try case-insensitive
+          const allResponse = await callGraphAPI(accessToken, 'GET', searchEndpoint, null, { $top: 100 });
+          const match = allResponse.value?.find(f => f.displayName.toLowerCase() === part.toLowerCase());
+          if (match) {
+            currentFolderId = match.id;
+          } else {
+            console.error(`Folder part "${part}" not found in path "${folderName}"`);
+            return null;
+          }
+        }
+      }
+
+      console.error(`Resolved path "${folderName}" to ID: ${currentFolderId}`);
+      return currentFolderId;
+    }
+
+    // First try with exact match filter on top-level
     const response = await callGraphAPI(
       accessToken,
       'GET',
@@ -76,34 +114,26 @@ async function getFolderIdByName(accessToken, folderName) {
       null,
       { $filter: `displayName eq '${folderName}'` }
     );
-    
+
     if (response.value && response.value.length > 0) {
       console.error(`Found folder "${folderName}" with ID: ${response.value[0].id}`);
       return response.value[0].id;
     }
-    
-    // If exact match fails, try to get all folders and do a case-insensitive comparison
-    console.error(`No exact match found for "${folderName}", trying case-insensitive search`);
-    const allFoldersResponse = await callGraphAPI(
-      accessToken,
-      'GET',
-      'me/mailFolders',
-      null,
-      { $top: 100 }
+
+    // Search all folders including subfolders
+    console.error(`No exact match found for "${folderName}", searching all folders including subfolders`);
+    const allFolders = await getAllFolders(accessToken);
+    const lowerFolderName = folderName.toLowerCase();
+
+    const matchingFolder = allFolders.find(
+      folder => folder.displayName.toLowerCase() === lowerFolderName
     );
-    
-    if (allFoldersResponse.value) {
-      const lowerFolderName = folderName.toLowerCase();
-      const matchingFolder = allFoldersResponse.value.find(
-        folder => folder.displayName.toLowerCase() === lowerFolderName
-      );
-      
-      if (matchingFolder) {
-        console.error(`Found case-insensitive match for "${folderName}" with ID: ${matchingFolder.id}`);
-        return matchingFolder.id;
-      }
+
+    if (matchingFolder) {
+      console.error(`Found match for "${folderName}" with ID: ${matchingFolder.id}`);
+      return matchingFolder.id;
     }
-    
+
     console.error(`No folder found matching "${folderName}"`);
     return null;
   } catch (error) {

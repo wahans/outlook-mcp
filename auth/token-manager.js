@@ -114,17 +114,27 @@ function getAccessToken() {
  * @returns {string|null} - The Flow access token or null if not available
  */
 function getFlowAccessToken() {
-  const tokens = loadTokenCache();
-  if (!tokens) return null;
-
-  // Check if flow token exists and is not expired
-  if (tokens.flow_access_token && tokens.flow_expires_at) {
-    if (Date.now() < tokens.flow_expires_at) {
-      return tokens.flow_access_token;
+  // Read tokens directly from file without Graph token expiry check
+  try {
+    const tokenPath = config.AUTH_CONFIG.tokenStorePath;
+    if (!fs.existsSync(tokenPath)) {
+      return null;
     }
-  }
+    const tokenData = fs.readFileSync(tokenPath, 'utf8');
+    const tokens = JSON.parse(tokenData);
 
-  return null;
+    // Check if flow token exists and is not expired
+    if (tokens.flow_access_token && tokens.flow_expires_at) {
+      if (Date.now() < tokens.flow_expires_at) {
+        return tokens.flow_access_token;
+      }
+      console.error('[DEBUG] Flow token has expired');
+    }
+    return null;
+  } catch (error) {
+    console.error('[DEBUG] Error reading flow tokens:', error);
+    return null;
+  }
 }
 
 /**
