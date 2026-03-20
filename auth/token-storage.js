@@ -7,8 +7,8 @@ class TokenStorage {
   constructor(config) {
     this.config = {
       tokenStorePath: path.join(process.env.HOME || process.env.USERPROFILE, '.outlook-mcp-tokens.json'),
-      clientId: process.env.MS_CLIENT_ID,
-      clientSecret: process.env.MS_CLIENT_SECRET,
+      clientId: process.env.MS_CLIENT_ID || process.env.OUTLOOK_CLIENT_ID,
+      clientSecret: process.env.MS_CLIENT_SECRET || process.env.OUTLOOK_CLIENT_SECRET,
       redirectUri: process.env.MS_REDIRECT_URI || 'http://localhost:3333/auth/callback',
       scopes: (process.env.MS_SCOPES || 'offline_access User.Read Mail.Read').split(' '),
       tokenEndpoint: process.env.MS_TOKEN_ENDPOINT || 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
